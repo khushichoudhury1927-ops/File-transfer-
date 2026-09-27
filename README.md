@@ -2,6 +2,16 @@
 
 A high-performance **C++20** file transfer system that provides secure, fault-tolerant file transfers with automatic transfer resumption. The project leverages **OpenSSL** for TLS encryption, ensuring files remain protected while in transit between the client and server.
 
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [docs/PRD.md](docs/PRD.md) | Project Requirements Document: problem, scope, 20 functional and 12 non-functional requirements, limitations, deliverables |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, component responsibilities, concurrency model, data structures, wire protocol, design decisions, security design |
+| [docs/UML.md](docs/UML.md) | Class diagram, three sequence diagrams, two state machine diagrams |
+| [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) | The six project stages mapped to the work done, timeline, demonstration script |
+| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Test strategy, coverage traceability, defects found and fixed, measured results |
+
 ---
 
 ## Overview
