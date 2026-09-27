@@ -391,7 +391,8 @@ void Session::verify_and_finish() {
         out << "\n[SESSION " << session_id << "] " << received_ / 1000000 << " MB stored in "
             << stored_file_;
         if (seconds > 0.0 && transferred > 0) {
-            out << " (" << (transferred / 1024.0 / 1024.0) / seconds << " MB/s)";
+            out << " (" << std::fixed << std::setprecision(2)
+                << (transferred / 1024.0 / 1024.0) / seconds << " MB/s)";
         }
     });
     logging::info([&](std::ostream& out) {
