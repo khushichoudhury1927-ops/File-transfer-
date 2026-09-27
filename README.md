@@ -226,10 +226,13 @@ linked, so both its headers and its import/static libraries are required.
 ### Clone
 
 ```bash
-git clone https://github.com/your-username/ftp-server.git
+git clone https://github.com/zexxitywave/File-transfer-.git
 
-cd ftp-server
+cd File-transfer-
 ```
+
+The repository deliberately contains no certificate or private key, so the next
+step is required before the server will start.
 
 ---
 
@@ -285,18 +288,24 @@ same destination, and the certificate cases that must fail.
 ctest --test-dir build --output-on-failure
 ```
 
-or run the script directly, optionally keeping the files it creates:
+or run the script directly, optionally keeping the files it creates. On Windows
+PowerShell (5.1) it has to be invoked through `powershell`:
 
 ```bash
-pwsh tests/run_tests.ps1 -BuildDir build
-pwsh tests/run_tests.ps1 -BuildDir build -KeepArtifacts
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_tests.ps1 -BuildDir build
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_tests.ps1 -BuildDir build -KeepArtifacts
 ```
+
+It exits non-zero if any check fails, and the suite transfers several hundred
+megabytes, so it takes roughly a minute.
 
 ---
 
 ## Running
 
-Start the server (defaults to port 9000):
+Start the server (defaults to port 9000). It must be started from the build
+directory, because that is where `tls_key/server.crt` and `tls_key/server.key`
+are copied and where uploads are written:
 
 ```bash
 cd build
@@ -309,12 +318,81 @@ Send a file to it (defaults to 127.0.0.1:9000):
 ./FTP client <path/to/file> [host] [port] [--ca <file> | --insecure]
 ```
 
+On Windows use `FTP.exe` instead of `./FTP`, for example `.\FTP.exe server`.
+
+Always prefix the executable with `.\` in PowerShell. A bare `FTP.exe` does not
+run this program: PowerShell resolves names through `PATH` and finds the
+built-in `C:\Windows\System32\ftp.exe` client instead, which prints Microsoft's
+FTP help text. `.\FTP.exe` runs the one in the current directory.
+
+A complete session looks like this:
+
+```bash
+# terminal 1
+cd build
+./FTP server 9000
+# [SERVER] Listening on port 9000 (TLS enabled)
+
+# terminal 2
+echo hello > note.txt
+./FTP client ../note.txt 127.0.0.1 9000
+# [SUCCESS] Server verified the file (hash matches)
+```
+
+The client verifies the server certificate by default. It looks for `server.crt`
+next to the executable first and then in `./tls_key`, so it can be launched from
+any directory and still trust the self-signed development certificate. The
+resolved path is printed before connecting, because a mismatch between the
+certificate the client trusts and the one the server holds otherwise shows up
+only as `certificate verify failed`.
+
 Uploads land in the server's working directory as `received_<name>`. If the
 connection drops, run the same client command again: the server reports how many
 bytes it already holds and the transfer continues from there. Once a transfer
 completes the server recomputes the SHA-256 of the stored file, deletes it if it
 does not match, and tells the client the outcome. The client exits with `0` only
 when the server confirmed a matching hash.
+
+Two clients may transfer at the same time, but only one client at a time may
+write a given name: a second client asking for a destination that is already in
+use is refused as **busy** and exits non-zero, rather than writing over the
+transfer in progress.
+
+Progress bars are drawn only when the output is a terminal. With the output
+redirected to a file, each session's progress is dropped so the log stays
+readable, and only real log lines are written.
+
+---
+
+## Troubleshooting
+
+**The program prints nothing and returns to the prompt instantly.** This is a
+DLL failure, not a program bug. Windows rejects the launch with
+`0xC0000135` (`STATUS_DLL_NOT_FOUND`) before `main()` runs, so there is no
+output and no error message. Check it with:
+
+```powershell
+$LASTEXITCODE    # -1073741515 means 0xC0000135, a missing DLL
+```
+
+A MinGW build links its runtime and OpenSSL dynamically, so `libstdc++-6.dll`,
+`libgcc_s_seh-1.dll`, `libwinpthread-1.dll`, `libssl-*.dll` and `libcrypto-*.dll`
+must be reachable. The build copies them next to the executable
+(`Runtime DLLs copied next to the executable` appears in the CMake output), so
+if they are missing, point CMake at a real toolchain:
+
+```bash
+cmake -S . -B build -DOPENSSL_ROOT_DIR=/path/to/openssl
+```
+
+On MSVC the runtime is static and this cannot happen.
+
+**`Address already in use`.** A previous server is still listening. End
+`FTP.exe` in Task Manager, or pick another port.
+
+**The server logs `handshake error ... http request`.** Something sent plain
+HTTP to the TLS port, usually a browser opening `http://localhost:9000`. There
+is no web interface; ignore those entries.
 
 ---
 

@@ -17,6 +17,12 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace {
 
 constexpr unsigned short DEFAULT_PORT = 9000;
@@ -52,12 +58,56 @@ void print_usage(const char* program) {
               << "  --insecure   skip certificate verification (never use this on a real network)\n";
 }
 
-// Same lookup order as the server: the working directory first, then tls_key.
+// The directory the running executable lives in. Assets are looked for here
+// first, so that the client keeps working when it is launched from somewhere
+// else that happens to contain a tls_key directory of its own.
+std::string executable_directory() {
+#ifdef _WIN32
+    char buffer[MAX_PATH] = {};
+    const DWORD length = ::GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
+    const std::string full(buffer, length);
+#elif defined(__linux__)
+    char buffer[4096] = {};
+    const ssize_t length = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (length <= 0) {
+        return {};
+    }
+    const std::string full(buffer, static_cast<std::size_t>(length));
+#else
+    return {};
+#endif
+    const std::size_t slash = full.find_last_of("/\\");
+    if (slash == std::string::npos) {
+        return {};
+    }
+    return full.substr(0, slash);
+}
+
+bool file_is_readable(const std::string& path) {
+    std::ifstream probe(path, std::ios::binary);
+    return probe.good();
+}
+
+// Looks next to the executable first, then in the working directory, so the
+// build's own copy of the certificate wins over an unrelated one.
 std::string locate_tls_asset(const std::string& filename) {
+    const std::string exe_dir = executable_directory();
+    if (!exe_dir.empty()) {
+        const std::string next_to_exe = exe_dir + "/" + filename;
+        const std::string next_to_exe_in_tls_key = exe_dir + "/tls_key/" + filename;
+        if (file_is_readable(next_to_exe)) {
+            return next_to_exe;
+        }
+        if (file_is_readable(next_to_exe_in_tls_key)) {
+            return next_to_exe_in_tls_key;
+        }
+    }
     const std::string candidates[] = {filename, "tls_key/" + filename};
     for (const std::string& path : candidates) {
-        std::ifstream probe(path, std::ios::binary);
-        if (probe.good()) {
+        if (file_is_readable(path)) {
             return path;
         }
     }
@@ -167,6 +217,9 @@ int run_client(boost::asio::io_context& io, const std::string& filepath,
             std::cerr << "[ERROR] Could not install the host check: " << ec.message() << "\n";
             return 1;
         }
+        // The resolved path is printed because "certificate verify failed" on
+        // its own says nothing about *which* certificate was trusted, and the
+        // wrong one is a common and confusing mistake.
         std::cerr << "[INFO] Verifying the server certificate against " << ca << "\n";
     }
 

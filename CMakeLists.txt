@@ -29,8 +29,8 @@ if(NOT OpenSSL_FOUND)
     foreach(root "$ENV{OPENSSL_ROOT_DIR}" "${OPENSSL_ROOT_DIR}")
         if(root)
             list(APPEND _openssl_hints "${root}" "${root}/include" "${root}/lib")
-        endif()
-    endforeach()
+    endif()
+endforeach()
 
     find_path(OPENSSL_INCLUDE_DIR openssl/ssl.h HINTS ${_openssl_hints})
     find_library(OPENSSL_SSL_LIBRARY NAMES ssl libssl ssl_3 libssl_3 HINTS ${_openssl_hints})
@@ -136,6 +136,88 @@ foreach(asset server.crt server.key)
                         "-subj \"/CN=localhost\"")
     endif()
 endforeach()
+
+# ---------------------------------------------------------------------------
+# Runtime DLLs (MinGW builds only)
+#
+# A MinGW build links its runtime and OpenSSL dynamically, so the executable
+# cannot even start unless those DLLs can be found: Windows fails the launch
+# with 0xC0000135 (STATUS_DLL_NOT_FOUND) before main() runs, printing nothing
+# at all and returning to the prompt instantly. The DLLs live in the compiler
+# and OpenSSL bin directories, which are not on the default search path, so
+# they are copied next to the executable. MSVC links the static CRT and needs
+# none of this.
+# ---------------------------------------------------------------------------
+if(WIN32 AND NOT MSVC)
+    set(_runtime_dll_dirs "")
+    foreach(_root "$ENV{OPENSSL_ROOT_DIR}" "${OPENSSL_ROOT_DIR}"
+                  "${OPENSSL_INCLUDE_DIR}/..")
+        if(_root)
+            if(IS_ABSOLUTE "${_root}")
+                list(APPEND _runtime_dll_dirs "${_root}/bin")
+            else()
+                get_filename_component(_abs "${_root}" ABSOLUTE)
+                list(APPEND _runtime_dll_dirs "${_abs}/bin")
+            endif()
+        endif()
+    endforeach()
+
+    # The MinGW runtime that the compiler itself was built against.
+    if(CMAKE_CXX_COMPILER)
+        get_filename_component(_cxx_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        if(_cxx_dir)
+            list(APPEND _runtime_dll_dirs "${_cxx_dir}")
+        endif()
+    endif()
+    if(CMAKE_CXX_COMPILER_DIR)
+        list(APPEND _runtime_dll_dirs "${CMAKE_CXX_COMPILER_DIR}")
+    endif()
+
+    set(_runtime_dlls_copied "")
+    foreach(_bin IN LISTS _runtime_dll_dirs)
+        if(IS_DIRECTORY "${_bin}")
+            file(GLOB _dlls
+                 "${_bin}/libssl-*.dll"
+                 "${_bin}/libcrypto-*.dll"
+                 "${_bin}/libstdc++-*.dll"
+                 "${_bin}/libgcc_s_*.dll"
+                 "${_bin}/libwinpthread-*.dll"
+                 "${_bin}/libatomic-*.dll"
+                 "${_bin}/libssp-*.dll")
+            if(_dlls)
+                file(COPY ${_dlls} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+                foreach(_d IN LISTS _dlls)
+                    get_filename_component(_n "${_d}" NAME)
+                    list(APPEND _runtime_dlls_copied "${_n}")
+                endforeach()
+            endif()
+        endif()
+    endforeach()
+
+    if(_runtime_dlls_copied)
+        list(REMOVE_DUPLICATES _runtime_dlls_copied)
+        string(REPLACE ";" " " _copied "${_runtime_dlls_copied}")
+        message(STATUS "Runtime DLLs copied next to the executable: ${_copied}")
+    endif()
+
+    # OpenSSL must be present or the program cannot even start.
+    set(_have_ssl FALSE)
+    set(_have_crypto FALSE)
+    foreach(_n IN LISTS _runtime_dlls_copied)
+        if(_n MATCHES "^libssl-")
+            set(_have_ssl TRUE)
+        elseif(_n MATCHES "^libcrypto-")
+            set(_have_crypto TRUE)
+        endif()
+    endforeach()
+    if(NOT _have_ssl OR NOT _have_crypto)
+        message(WARNING
+                "OpenSSL runtime DLLs (libssl/libcrypto) not found: the executable will "
+                "fail to start with error 0xC0000135 (DLL not found). Set "
+                "OPENSSL_ROOT_DIR to the OpenSSL install prefix, or add its bin "
+                "directory to PATH.")
+    endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # Link
