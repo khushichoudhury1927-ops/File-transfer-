@@ -1,0 +1,62 @@
+# Build folders
+build/
+cmake-build-*/
+out/
+
+# Prerequisites
+*.d
+
+# Compiled object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger files
+*.pdb
+*.dwo
+
+# Compiled dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# boost library (vendored headers, not committed)
+include/boost/
+
+# VSCode
+.vscode/
+
+# CLion / JetBrains IDE project files
+.idea/
+
+# Logs
+*.log
+
+# TLS keys / certificates
+tls_key/
+*.pem
+*.key
+*.crt
