@@ -463,3 +463,34 @@ is no web interface; ignore those entries.
 - Cross-platform GUI client
 
 ---
+
+## Build and run (Ubuntu / WSL)
+
+1. Install dependencies:
+
+        sudo apt-get update && sudo apt-get install -y build-essential cmake libssl-dev libboost-dev openssl
+
+2. Create the TLS certificate (it is not committed, and the server will not start without it):
+
+        mkdir -p tls_key
+        openssl req -x509 -newkey rsa:2048 -nodes -keyout tls_key/server.key -out tls_key/server.crt -days 365 -config san.cnf
+
+   Here san.cnf is a small config file containing CN=localhost and subjectAltName=DNS:localhost,IP:127.0.0.1. Delete it after use.
+
+3. Build:
+
+        cmake -S . -B build
+        cmake --build build -j"$(nproc)"
+
+4. Start the server from inside build/:
+
+        cd build
+        ./FTP server 9000
+
+5. In a second terminal, send a file:
+
+        cd build
+        ./FTP client ../note.txt
+
+   The server saves it as received_note.txt in build/, and the client prints
+   [SUCCESS] Server verified the file (hash matches).
